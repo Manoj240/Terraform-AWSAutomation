@@ -131,7 +131,7 @@ resource "aws_route_table" "rtprivate1a" {
 #Associate public route table for public subnet
 ##############################################
 resource "aws_route_table_association" "privatettassoc" {
-  subnet_id = "${aws_subnet.public-1a.id}"
+  subnet_id = "${aws_subnet.private-1a.id}"
   route_table_id = "${aws_route_table.rtprivate1a.id}"
 }
 
