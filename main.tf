@@ -2,60 +2,39 @@
 #Provider info
 ##########################################
 provider "aws" {
-  region = "ap-south-1"
-  
+  region = "${var.aws-region}"
 }
 data "aws_availability_zones" "available" {  
-}
-############################################
-#Variables
-###########################################
-variable "Development" { 
-default = "True"
 }
 
 #################################################
 #Creation of VPC
 #################################################
 resource "aws_vpc" "main" {
-  cidr_block       = "10.100.0.0/16"
+  cidr_block       = "${lookup(var.vpc,"cidr")}"
   instance_tenancy = "default"
-
   tags = {
-    Name = "main"
+  Name = "main"
 	Environment = "STG"
 	Terraform = "True"
-  Phase = "${var.Development}-Phase"
   }
 }
 
 ##################################################
-#Creation of public subnet
+#Creation of  subnets
 ##################################################
-resource "aws_subnet" "public-1a" {
-  cidr_block = "10.100.2.0/24"
+resource "aws_subnet" "subnets" {
+  count = "${length(var.subnets)}"
+  cidr_block = "${lookup(var.subnets[count.index],"cidr")}"
   vpc_id = "${aws_vpc.main.id}"
-  map_public_ip_on_launch = "true"
-  availability_zone = "${data.aws_availability_zones.available.names[0]}"
+  map_public_ip_on_launch = "${lookup(var.subnets[count.index],"publicip")}"
+  availability_zone = "${lookup(var.subnets[count.index],"availregion")}"
     tags  = {
-      Name = "Public-1a"
-      Terraform = "True"
-      #AZ = "${data.aws_availabilty_zones.available.names[0]}"
-    }
-}
-#################################################
-#Creation of private subnet
-##############################################
-resource "aws_subnet" "private-1a" {
-  cidr_block = "10.100.50.0/24"
-  map_public_ip_on_launch = "false"
-  vpc_id = "${aws_vpc.main.id}"
-  availability_zone = "${data.aws_availability_zones.available.names[0]}"
-    tags  = {
-      Name = "Private-1b"
+      Name = "${lookup(var.subnets[count.index], "name")}"
       Terraform = "True"
     }
 }
+
 #####################################
 #create internet gate way
 #####################################
@@ -81,8 +60,10 @@ resource "aws_eip" "NAT-Elasticip" {
 #create of NAT gateway
 #####################################
 resource "aws_nat_gateway" "TerraformNAT" {
+  count = "${length(var.subnets)}"
   allocation_id = "${aws_eip.NAT-Elasticip.id}"
-  subnet_id = "${aws_subnet.public-1a.id}"
+  #depends_on  = ["aws_subnet.Public-1a"]
+  subnet_id = "${element(aws_subnet.subnets.*.id, count.index)}"
   tags = {
     Name = "Manoj-NAT"
     Terraform = "True"
@@ -108,7 +89,7 @@ resource "aws_route_table" "rtbpublic1a" {
 #Associate public route table for public subnet
 ##############################################
 resource "aws_route_table_association" "publicttassoc" {
-  subnet_id = "${aws_subnet.public-1a.id}"
+  subnet_id = "${aws_subnet.subnets.*.id}"
   route_table_id = "${aws_route_table.rtbpublic1a.id}"
 }
 
@@ -122,7 +103,7 @@ resource "aws_route_table" "rtprivate1a" {
     gateway_id = "${aws_nat_gateway.TerraformNAT.id}"
   }
   tags = {
-    Name = "Private-1a"
+    Name = "private-1a"
     Terraform = "True"
   }
 }
@@ -131,7 +112,7 @@ resource "aws_route_table" "rtprivate1a" {
 #Associate public route table for public subnet
 ##############################################
 resource "aws_route_table_association" "privatettassoc" {
-  subnet_id = "${aws_subnet.private-1a.id}"
+  subnet_id = "${aws_subnet.subnets.*.id}"
   route_table_id = "${aws_route_table.rtprivate1a.id}"
 }
 
@@ -174,7 +155,7 @@ resource "aws_instance" "baston" {
   associate_public_ip_address = "true"
   disable_api_termination = "false"
   ipv6_address_count = "0"
-  subnet_id = "${aws_subnet.public-1a.id}"
+  subnet_id = "${aws_subnet.subnets.*.id}"
   key_name = "${aws_key_pair.manojgenerated_key.key_name}"
   monitoring = "false"
   security_groups = ["${aws_security_group.BastonSG.id}"]
